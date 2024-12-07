@@ -1,6 +1,6 @@
 import sqlite3
 
-def create_database():
+def create_db():
     with sqlite3.connect('pact_database.sqlite') as pact_database:
         cursor = pact_database.cursor()
 

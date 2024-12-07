@@ -11,7 +11,7 @@ import gspread
 import httpx
 from dotenv import load_dotenv
 import os
-from database_functions import create_database
+from database_functions import create_db
 
 
 pact_private_token = os.getenv('PACT_PRIVATE_TOKEN')
@@ -24,7 +24,7 @@ gs_table_name = 'Анализ диалогов'
 
 current_day_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-def add_conversation_to_database(conversation):
+def add_conversation_to_db(conversation):
     if len(conversation['contacts']) == 0:
         return False
 
@@ -51,7 +51,7 @@ def add_conversation_to_database(conversation):
 
     return True
 
-def add_messages_to_database(messages, conversation_external_id):
+def add_messages_to_db(messages, conversation_external_id):
     if len(messages) == 0:
         return False
 
@@ -206,7 +206,7 @@ def analyzing_main():
         # проверяем какой список промптов ему подходит
         prompts_for_current_chat = prompts_for_private_chats if dialogue[3] == 'Личная переписка' else prompts_for_work_chat
 
-        conversation_id = get_conversation_id_with_telephone(dialogue[5])
+        conversation_id = get_conversation_id_with_telephone_db(dialogue[5])
         messages_of_conversation = get_messages_of_conversation_db(conversation_id)
         dialogue_for_analysing = get_dialogue_by_roles_from_messages(messages_of_conversation, dialogue[1])
         current_cell = ws.find(dialogue[5])
@@ -239,7 +239,7 @@ def analyzing_main():
                             if next_analysing_date > current_day_start: # если не наступил день следующего анализа
                                 continue
                 elif prompt[8] == 'нет новых сообщений':
-                    last_message_of_dialogue_date_str = get_last_message_of_conversation_date(conversation_id)
+                    last_message_of_dialogue_date_str = get_last_message_of_conversation_date_db(conversation_id)
                     last_message_of_dialogue_date = datetime.datetime.strptime(last_message_of_dialogue_date_str[:10],
                                                                                "%Y-%m-%d")
                     next_analysing_date = last_message_of_dialogue_date + datetime.timedelta(days=int(prompt[9]))
@@ -275,7 +275,7 @@ def analyzing_main():
 
     print('analysing done')
 
-def conversation_exists(conversation_id):
+def conversation_exists_db(conversation_id):
     with sqlite3.connect('pact_database.sqlite') as pact_database:
         cursor = pact_database.cursor()
 
@@ -357,23 +357,6 @@ def get_conversations_of_company_db(company_id):
 
         return list_of_conversations
 
-def get_dialogue_from_list_of_messages(list_of_messages, chat_type):
-    dialogue_for_analysing = ""
-    for message in list_of_messages:
-        if chat_type == 'Личная переписка':
-            if message[4] == 1:
-                role = 'Клиент'
-            else:
-                role = 'Менеджер'
-        else:
-            role = 'Message'  # НОМЕР ТЕЛЕФОНА !!!!!!!!!!!!!!!
-
-        if type(message[3]) != types.NoneType:
-            dialogue_for_analysing = (dialogue_for_analysing
-                                      + role + ': ' + message[3] + "\n")
-
-    return dialogue_for_analysing
-
 def get_messages_of_conversation(company_id, conversation_id):
     headers = {'X-Private-Api-Token': pact_private_token}
 
@@ -415,7 +398,7 @@ def get_messages_of_conversation_db(conversation_id):
 
         return list_of_messages
 
-def get_new_messages_for_database(messages, conversation_external_id):
+def get_new_messages_for_db(messages, conversation_external_id):
     with sqlite3.connect('pact_database.sqlite') as pact_database:
         cursor = pact_database.cursor()
 
@@ -520,36 +503,7 @@ def get_text_from_audio_message_rev_ai(audio_message_url):
             time.sleep(20)
     return ''
 
-def get_text_of_conversation(conversation_external_id):
-    # ОТПРАВЛЯЕМ ВСЕ СООБЩЕНИЯ В ГПТ И ЖДЕМ РЕЗУЛЬТАТ
-    # Результат анализа внести в новую таблицу в базе данных
-    #   (conversation_id, date_of_analysing, number_of_messages, text_result)
-    with sqlite3.connect('pact_database.sqlite') as pact_database:
-        cursor = pact_database.cursor()
-
-        query_str = """SELECT * 
-                    FROM messages LEFT JOIN main.conversations c on messages.conversation_external_id = c.external_id 
-                    WHERE messages.conversation_external_id = ? 
-                    ORDER BY messages.created_at_timestamp DESC"""
-        cursor.execute(query_str, (conversation_external_id,))
-        list_of_messages = cursor.fetchall()
-        pact_database.commit()
-
-        #ОБХОДИМ СПИСОК СООБЩЕНИЙ И СОСТАВЛЯЕМ ЕДИНЫЙ ТЕКСТ И ОТПРАВЛЯЕМ В ГПТ
-        dialogue_for_analysing = ""
-        for message in list_of_messages:
-            if message[4] == 1:
-                conversation_role = 'Клиент'
-            else:
-                conversation_role = 'Менеджер'
-
-            if type(message[3]) != types.NoneType:
-                dialogue_for_analysing = (dialogue_for_analysing
-                                      + conversation_role + ': ' + message[3] + "\n")
-
-        return dialogue_for_analysing
-
-def get_conversation_id_with_telephone(telephone):
+def get_conversation_id_with_telephone_db(telephone):
     with sqlite3.connect('pact_database.sqlite') as pact_database:
         cursor = pact_database.cursor()
 
@@ -560,7 +514,7 @@ def get_conversation_id_with_telephone(telephone):
 
         return string_of_table[0] # external_id
 
-def get_last_analysing_of_conversation_date(conversation_id, text_prompt):
+def get_last_analysing_of_conversation_date_db(conversation_id, text_prompt):
     with sqlite3.connect('pact_database.sqlite') as pact_database:
         cursor = pact_database.cursor()
 
@@ -571,7 +525,7 @@ def get_last_analysing_of_conversation_date(conversation_id, text_prompt):
 
         return string_of_table[0] if not string_of_table is None else 0 # date_of_analyzing_timestamp
 
-def get_last_message_of_conversation_date(conversation_id):
+def get_last_message_of_conversation_date_db(conversation_id):
     with sqlite3.connect('pact_database.sqlite') as pact_database:
         cursor = pact_database.cursor()
 
@@ -637,7 +591,7 @@ def update_conversations_list():
 
     print('conversations_list updated')
 
-def update_data_base():
+def update_db():
     ### 1 Получить все диалоги
     conversations = get_conversations_of_company(company_id)
 
@@ -645,27 +599,27 @@ def update_data_base():
     for conversation in conversations:
         messages = get_messages_of_conversation(company_id, conversation['external_id'])
         # если такой чат уже есть в базе, проверяем
-        if conversation_exists(conversation['external_id']):
+        if conversation_exists_db(conversation['external_id']):
             number_of_conversation_messages = len(messages)
             number_of_conversation_messages_db = get_number_of_conversation_messages_db(conversation['external_id'])
 
             # если количество сообщений в базе не равно количеству полученному из пакта, значит добавляем в базу новые
             if number_of_conversation_messages_db != number_of_conversation_messages:
-                new_messages_for_database = get_new_messages_for_database(messages, conversation['external_id'])
-                add_messages_to_database(new_messages_for_database, conversation['external_id'])
+                new_messages_for_database = get_new_messages_for_db(messages, conversation['external_id'])
+                add_messages_to_db(new_messages_for_database, conversation['external_id'])
         else:
-            add_conversation_to_database(conversation)
-            add_messages_to_database(messages, conversation['external_id'])
+            add_conversation_to_db(conversation)
+            add_messages_to_db(messages, conversation['external_id'])
 
     print('DB updated')
 
 load_dotenv()
 
-create_database()
+create_db() # make db if not exists
+update_db() # update conversations and messages in db
 
-update_data_base() # update conversations and messages in db
 update_conversations_list() # update conversations in google sheets И заполнить дату анализа всем предыдущим днем(пустой первый прогон)
 analyzing_main()
 
-##upload_conversations_and_prompts # upload it to memory (or put it to db?) for next analysing
-##analysing_conversations # analysing conversations from gs (take it from db) with prompts from gs (take it from db)
+#upload_conversations_and_prompts # upload it to memory (or put it to db?) for next analysing
+#analysing_conversations # analysing conversations from gs (take it from db) with prompts from gs (take it from db)
