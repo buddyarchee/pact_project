@@ -11,8 +11,6 @@ import gspread
 import httpx
 from dotenv import load_dotenv
 import os
-from database_functions import create_db
-
 
 pact_private_token = os.getenv('PACT_PRIVATE_TOKEN')
 proxy_url = os.getenv('PROXY_URL')
@@ -301,6 +299,62 @@ def conversation_is_analyzed(conversation_external_id, number_of_conversation_me
         pact_database.commit()
 
         return True if len(list_of_messages) > 0 else False
+
+def create_db():
+    with sqlite3.connect('pact_database.sqlite') as pact_database:
+        cursor = pact_database.cursor()
+
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS 
+                conversations (
+                    external_id integer PRIMARY KEY, 
+                    channel_id integer NOT NULL,
+                    channel_type text NOT NULL,
+                    name text NOT NULL,
+                    sender_external_id text, 
+                    created_at text NOT NULL,
+                    created_at_timestamp integer NOT NULL,
+                    contact_external_id text NOT NULL,
+                    contact_external_public_id text,
+                    contact_name text,
+                    company_id integer NOT NULL,
+                    chat_type text NOT NULL
+                    )"""
+        )
+
+        # REFACTOR - channel_type УБРАТЬ ДЛЯ ТАБЛИЦЫ messages. А также убрать в процедуре заполнения этой таблицы
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS 
+                messages (
+                    external_id integer PRIMARY KEY,  
+                    channel_id integer NOT NULL,
+                    channel_type text NOT NULL,
+                    message text,
+                    income boolean NOT NULL,
+                    created_at text NOT NULL,
+                    created_at_timestamp integer NOT NULL,
+                    attachment_external_id integer,
+                    attachment_url text,
+                    conversation_external_id integer NOT NULL
+                    )"""
+        )
+
+        ### ЗАПРОС К НОВОЙ ТАБЛИЦЕ analysis (conversation_id, date_of_analysing, number_of_messages, text_result)
+        cursor.execute(
+            """CREATE TABLE IF NOT EXISTS 
+                analysis (
+                    id integer PRIMARY KEY,
+                    conversation_external_id integer NOT NULL, 
+                    date_of_analysing text NOT NULL,
+                    date_of_analysing_timestamp integer NOT NULL,
+                    number_of_messages integer NOT NULL,
+                    text_result text NOT NULL,
+                    text_prompt text NOT NULL
+
+                    )"""
+        )
+
+        pact_database.commit()
 
 def get_dialogue_by_roles_from_messages(messages_of_conversation, chat_type):
 
@@ -613,13 +667,19 @@ def update_db():
 
     print('DB updated')
 
-load_dotenv()
 
-create_db() # make db if not exists
-update_db() # update conversations and messages in db
+if __name__ == "__main__":
+    load_dotenv()
+    create_db()
+    update_db()
+    update_conversations_list()
+    analyzing_main()
 
-update_conversations_list() # update conversations in google sheets И заполнить дату анализа всем предыдущим днем(пустой первый прогон)
-analyzing_main()
+# load_dotenv()
+# create_db() # make db if not exists
+# update_db() # update conversations and messages in db
+# update_conversations_list() # update conversations in google sheets И заполнить дату анализа всем предыдущим днем(пустой первый прогон)
+# analyzing_main()
 
 #upload_conversations_and_prompts # upload it to memory (or put it to db?) for next analysing
 #analysing_conversations # analysing conversations from gs (take it from db) with prompts from gs (take it from db)
