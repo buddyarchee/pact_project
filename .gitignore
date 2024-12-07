@@ -1,0 +1,4 @@
+/.venv
+.env
+pact_database.sqlite
+test.py
